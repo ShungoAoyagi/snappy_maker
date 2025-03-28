@@ -536,6 +536,8 @@ void monitorDirectory(const std::string &watchDir, const std::string &outputDir,
             static std::set<std::pair<int, int>> processedSets;
             // 不完全セット（まだ揃っていないセット）を追跡
             static std::set<std::pair<int, int>> incompleteSetsSeen;
+            // このループで圧縮処理を実行したフラグ
+            bool processedAnySet = false;
 
             // ディレクトリをスキャンしてファイルセットを取得
             auto fileSets = scanAndGroupFiles(watchDir, basePattern, setSize);
@@ -590,6 +592,8 @@ void monitorDirectory(const std::string &watchDir, const std::string &outputDir,
                     LOG("Starting processing of set: run " << fileSet.run << ", set " << fileSet.setNumber);
                     threads.emplace_back(processFileSet, fileSet, outputDir, deleteAfter);
                     processedSets.insert(setKey);
+                    // 圧縮処理を実行したフラグをセット
+                    processedAnySet = true;
                 }
                 else
                 {
@@ -612,19 +616,29 @@ void monitorDirectory(const std::string &watchDir, const std::string &outputDir,
                     ++it;
                 }
             }
+
+            // キューの状態をログに出力（オプション）
+            LOG("Delete queue size: " << deleteQueue->size());
+
+            // 圧縮処理が実行されなかった場合のみ待機を行う
+            if (!processedAnySet)
+            {
+                // 指定された間隔で待機
+                for (int i = 0; i < pollInterval && running; ++i)
+                {
+                    std::this_thread::sleep_for(std::chrono::seconds(1));
+                }
+            }
         }
         catch (const std::exception &e)
         {
             LOG("Error in monitor loop: " << e.what());
-        }
 
-        // キューの状態をログに出力（オプション）
-        LOG("Delete queue size: " << deleteQueue->size());
-
-        // 指定された間隔で待機
-        for (int i = 0; i < pollInterval && running; ++i)
-        {
-            std::this_thread::sleep_for(std::chrono::seconds(1));
+            // エラー時は待機を入れる（圧縮処理の有無に関わらず）
+            for (int i = 0; i < pollInterval && running; ++i)
+            {
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+            }
         }
     }
 
