@@ -1,6 +1,5 @@
 /build/*
 /output/*
-/snappy/*
 /test_data/*
 /test_data_master/*
 /test_data_master2/*
